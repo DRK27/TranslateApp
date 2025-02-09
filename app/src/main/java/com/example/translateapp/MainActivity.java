@@ -2,7 +2,6 @@ package com.example.translateapp;
 
 import android.os.Bundle;
 import android.util.Log;
-import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
@@ -12,12 +11,15 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
-
-import java.util.List;
-
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
+import com.android.volley.Request;
+import com.android.volley.RequestQueue;
+import com.android.volley.Response;
+import com.android.volley.VolleyError;
+import com.android.volley.toolbox.JsonArrayRequest;
+import com.android.volley.toolbox.Volley;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 public class MainActivity extends AppCompatActivity {
     private EditText inputWord;
@@ -51,42 +53,38 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void translateWord(String query) {
-        translateButton.setEnabled(false);
-        translationResult.setText("Переводится...");
+        String url = "https://linguee-api.fly.dev/api/v2/translations?query=" + query + "&src=ru&dst=en";
 
-        LingueeApi api = ApiClient.getLingueeApi();
-        Call<List<TranslationResponse>> call = api.getTranslation(query, "ru", "en");
+        RequestQueue queue = Volley.newRequestQueue(this);
 
-        call.enqueue(new Callback<List<TranslationResponse>>() {
-            @Override
-            public void onResponse(Call<List<TranslationResponse>> call, Response<List<TranslationResponse>> response) {
-                translateButton.setEnabled(true);
+        JsonArrayRequest jsonArrayRequest = new JsonArrayRequest(Request.Method.GET, url, null,
+                response -> {
+                    try {
+                        StringBuilder translationText = new StringBuilder();
 
-                if (response.isSuccessful() && response.body() != null && !response.body().isEmpty()) {
-                    TranslationResponse translation = response.body().get(0);
-                    StringBuilder examples = new StringBuilder();
+                        for (int i = 0; i < response.length(); i++) {
+                            JSONObject lemma = response.getJSONObject(i);
+                            JSONArray translations = lemma.getJSONArray("translations");
 
-                    for (Translation t : translation.getTranslations()) {
-                        Log.d("Translation", "Text: " + t.getText());
-                        examples.append("Перевод: ").append(t.getText()).append("\n");
-
-                        if (t.getExamples() != null) {
-                            for (Example ex : t.getExamples()) {
-                                examples.append(ex.getSource()).append(" - ").append(ex.getTarget()).append("\n");
+                            for (int j = 0; j < translations.length(); j++) {
+                                JSONObject translation = translations.getJSONObject(j);
+                                String translatedWord = translation.getString("text");
+                                translationText.append("Перевод: ").append(translatedWord).append("\n");
                             }
                         }
-                    }
-                    translationResult.setText(examples.toString());
-                } else {
-                    translationResult.setText("Ошибка: перевод не найден.");
-                }
-            }
+                        translationResult.setText(translationText.toString());
 
-            @Override
-            public void onFailure(Call<List<TranslationResponse>> call, Throwable t) {
-                translateButton.setEnabled(true);
-                translationResult.setText("Ошибка сети: " + t.getMessage());
-            }
-        });
+                    } catch (JSONException e) {
+                        translationResult.setText("Ошибка обработки JSON: " + e.getMessage());
+                        e.printStackTrace();
+                    }
+                },
+                error -> {
+                    translationResult.setText("Ошибка запроса: " + error.getMessage());
+                    Log.e("Volley", "Ошибка запроса: " + error.getMessage());
+                    error.printStackTrace();
+                });
+
+        queue.add(jsonArrayRequest);
     }
 }
